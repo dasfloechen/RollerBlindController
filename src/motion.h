@@ -14,7 +14,7 @@
 #define PIN_DIR   (3)
 #define PIN_EN    (4)
 #define PIN_CS    (5)
-#define PIN_ENDSTOP (6)
+#define PIN_ENDSTOP (23)
 
 /* MOTOR DRIVER CONFIGURATION */
 #define DRIVER_MICROSTEPS   (16)
@@ -22,8 +22,8 @@
 
 /* MOTOR CONFIGURATION */
 #define MOTOR_STEPS_PER_ROTATION    (200)
-#define MOTOR_MAX_SPEED             (3600) //STEPS/s
-#define MOTOR_MAX_ACCELERATION      (1800) //STEPS/s²
+#define MOTOR_MAX_SPEED             (1000) //STEPS/s
+#define MOTOR_MAX_ACCELERATION      (8000.0f) //STEPS/s²
 
 
 
@@ -62,15 +62,26 @@ class Motion {
     void setDirectionParameter(uint8_t upDirection, uint8_t relative);
     void setAutoHoming(uint8_t value);
 
+    long distanceToGo(void);
+    uint8_t isHomed(void);
+    uint8_t isHoming(void);
+    int32_t getMaxPosition(void);
+
   protected:
 
     void _savePositionAsMaxPosition(void);
     void _loadMaxPosition(void);
 
     uint8_t _isRunning = false;
+    uint8_t _isRunningStop = false;
+
     uint8_t _isMaxLimitSearch = false;
+    uint8_t _isMaxLimitSearchStop = false;
+
     uint8_t _ignoreMaxLimit = false;
+
     uint8_t _isHoming = false;
+    uint8_t _isHomingStop = false;
     uint8_t _homingOk = false;
 
     uint8_t _endstopPolarity = LOW;
@@ -83,7 +94,7 @@ class Motion {
     uint8_t _currentDirection = MOTOR_LEFT;
     int32_t _positionLimitMax = INT32_MAX;
 
-    uint32_t _homingSpeed = 1800;
+    uint32_t _homingSpeed = 600;
     uint8_t _autoHoming = false;
 
 

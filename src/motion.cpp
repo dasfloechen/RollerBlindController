@@ -30,8 +30,8 @@ int Motion::begin(void)
   pinMode(PIN_ENDSTOP, INPUT_PULLUP);
 
   _stepper.begin();
-  _stepper.setCurrent(300, 0.11, 0.5);
-  _stepper.hold_current(4);
+  _stepper.setCurrent(1000, 0.11, 0.5);
+  _stepper.hold_current(1);
   _stepper.stealthChop(1);
   _stepper.microsteps(16);
   _stepper.interpolate(1)  ;
@@ -43,7 +43,7 @@ int Motion::begin(void)
 
   digitalWrite(PIN_EN, LOW);
 
-  _stepperControl.setMaxSpeed(MOTOR_MAX_SPEED);
+  _stepperControl.setMaxSpeed(MOTOR_MAX_SPEED*DRIVER_MICROSTEPS);
   _stepperControl.setAcceleration(MOTOR_MAX_ACCELERATION);
   _stepperControl.setCurrentPosition(0);
 
@@ -75,6 +75,14 @@ void Motion::process(void)
         #endif
         return;
       }
+      if(_isRunningStop){
+        _isRunningStop = false;
+        _isRunning = false;
+        #ifdef MOTION_DEBUG
+        DEBUGSERIAL.println("RUNNING STOP");
+        #endif
+        return;
+      }
     }
 
     if(!_stepperControl.run()){
@@ -98,14 +106,25 @@ void Motion::process(void)
     }
     _stepperControl.runSpeed();
   }else if(_isMaxLimitSearch){
+    if(_isMaxLimitSearchStop){
+      if(_stepperControl.currentPosition() % DRIVER_MICROSTEPS == 0){
+        _isMaxLimitSearch = false;
+        _isMaxLimitSearchStop = false;
+        return;
+      }
+    }
     _stepperControl.runSpeed();
   }
 }
 
 void Motion::stop(void)
 {
-    _isRunning = false;
-    _isHoming = false;
+    if(_isRunning){
+      _stepperControl.stop();
+      //_isRunningStop = true;
+    }else{
+      _isHoming = false;
+    }
 
     #ifdef MOTION_DEBUG
     DEBUGSERIAL.println("MOTOR STOP!");
@@ -115,7 +134,8 @@ void Motion::stop(void)
 int Motion::doHoming(void)
 {
   #ifdef MOTION_DEBUG
-  DEBUGSERIAL.println("START HOMING");
+  DEBUGSERIAL.print("START HOMING SPEED:");
+  DEBUGSERIAL.println(_homingSpeed);
   #endif
 
   if(_isRunning){
@@ -137,10 +157,18 @@ int Motion::doHoming(void)
 
   _stepperControl.setCurrentPosition(0);
 
+  _stepperControl.setMaxSpeed(_homingSpeed*DRIVER_MICROSTEPS);
+
   if(_homingDirection == DIR_UP){
-    _stepperControl.setSpeed(_homingSpeed*DRIVER_MICROSTEPS);
+    #ifdef MOTION_DEBUG
+    DEBUGSERIAL.println("HOMING UP");
+    #endif
+    _stepperControl.setSpeed((_homingSpeed*DRIVER_MICROSTEPS)*(-1.0f));
   }else{
-    _stepperControl.setSpeed(-_homingSpeed*DRIVER_MICROSTEPS);
+    #ifdef MOTION_DEBUG
+    DEBUGSERIAL.println("HOMING DOWN");
+    #endif
+    _stepperControl.setSpeed((_homingSpeed*DRIVER_MICROSTEPS));
   }
 
   _isHoming = true;
@@ -186,11 +214,12 @@ int Motion::moveTo(int32_t steps, uint32_t speed, uint8_t relative)
     }
   }
 
-  _stepperControl.setSpeed(speed * DRIVER_MICROSTEPS);
+  _stepperControl.setSpeed(float(speed * DRIVER_MICROSTEPS));
+  _stepperControl.setMaxSpeed(float(speed * DRIVER_MICROSTEPS));
   if(relative){
     _stepperControl.move(steps * DRIVER_MICROSTEPS);
   }else{
-    _stepperControl.moveTo(steps*DRIVER_MICROSTEPS);
+    _stepperControl.moveTo(steps * DRIVER_MICROSTEPS);
   }
   _isRunning = true;
 
@@ -240,6 +269,7 @@ int Motion::startSetMaxLimit(uint32_t speed){
     return false;
   }
 
+  _stepperControl.setMaxSpeed(searchSpeed*DRIVER_MICROSTEPS);
   if(_homingDirection == DIR_UP){
     _stepperControl.setSpeed(searchSpeed);
   }else{
@@ -253,7 +283,7 @@ int Motion::startSetMaxLimit(uint32_t speed){
 
 int Motion::stopSetMaxLimit(void){
   #ifdef MOTION_DEBUG
-  DEBUGSERIAL.println("BEGIN END SET MAX LIMIT");
+  DEBUGSERIAL.println("END SET MAX LIMIT");
   #endif
 
   if(!_isMaxLimitSearch)
@@ -264,7 +294,8 @@ int Motion::stopSetMaxLimit(void){
     return false;
   }
 
-  _isMaxLimitSearch = false;
+  //_isMaxLimitSearch = false;
+  _isMaxLimitSearchStop = true;
 
   _savePositionAsMaxPosition();
 
@@ -288,6 +319,25 @@ void Motion::showStat(void)
     DEBUGSERIAL.println(_stepper.fsactive());
 }
 
+
+long Motion::distanceToGo(void){
+  if(!_isRunning)
+    return 0;
+
+  return _stepperControl.distanceToGo();
+}
+
+uint8_t Motion::isHomed(void){
+  return _homingOk;
+}
+
+uint8_t Motion::isHoming(void){
+  return _isHoming;
+}
+
+int32_t Motion::getMaxPosition(void){
+  return _positionLimitMax;
+}
 
 void Motion::setEndstopPolarity(uint8_t polarity){
   _endstopPolarity = polarity;

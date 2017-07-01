@@ -2,10 +2,18 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 #include "motion.h"
+#include <elapsedMillis.h>
+#include <Button.h>
 
 Motion motionControl;
 Motion* mPtr;
 IntervalTimer stepTimer;
+
+elapsedMillis _adcTimer;
+Button buttonUp(22);
+Button buttonDown(21);
+Button buttonHome(23);
+
 
 #define UART_RX_SIZE  (128)
 #define CMDUART Serial
@@ -14,19 +22,56 @@ static void UartHandler(void);
 void loop (void)
 {
   UartHandler();
+
+  if(buttonUp.released()){
+    if(motionControl.distanceToGo() > 0){
+      motionControl.stop();
+    }else if(motionControl.distanceToGo() == 0){
+      Serial.println("UP");
+      motionControl.moveTo(0, 350);
+    }
+  }
+
+  if(buttonDown.released()){
+    if(motionControl.distanceToGo() < 0){
+      motionControl.stop();
+    }else if(motionControl.distanceToGo() == 0){
+      Serial.println("DOWN");
+      motionControl.moveTo(motionControl.getMaxPosition(), 350);
+    }
+  }
+
+  if(buttonHome.released()){
+    if(!motionControl.isHomed() && !motionControl.isHoming())
+      motionControl.doHoming();
+  }
+
+  if(_adcTimer > 100){
+    //Serial.print("END:");
+    //Serial.println(digitalRead(PIN_ENDSTOP));
+    _adcTimer = 0;
+  }
+
 }
 
 void setup(void)
 {
   mPtr = &motionControl;
 
+  buttonHome.begin();
+
   motionControl.begin();
   motionControl.setEndstopPolarity(LOW);
-  motionControl.setDirectionParameter(MOTOR_RIGHT, DIR_DOWN);
+  motionControl.setHomingSpeed(100);
+  motionControl.setAutoHoming(false);
+  motionControl.setDirectionParameter(MOTOR_RIGHT, DIR_UP);
 
 
   stepTimer.begin([]{mPtr->process();}, 5);
   stepTimer.priority(130);
+
+  buttonUp.begin();
+  buttonDown.begin();
 }
 
 static void CommandParser(char * s, int len)
@@ -82,7 +127,7 @@ static void CommandParser(char * s, int len)
 
   //Start max length calibration
   if(strcmp("STML", cmd) == 0){
-    motionControl.startSetMaxLimit(500);
+    motionControl.startSetMaxLimit(250);
   }
 
   //Stop max length calibration and save value
